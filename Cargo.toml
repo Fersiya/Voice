@@ -1,0 +1,28 @@
+[package]
+name = "voice"
+version = "0.1.0"
+edition = "2021"
+description = "Озвучка субтитров с экрана (GTA V и другие игры): захват области, OCR, TTS"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+xcap = "0.7"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rodio = "0.19"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.58"
+features = [
+    "Foundation",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
+    "Win32_System_WinRT",
+]
+
+[profile.release]
+opt-level = 3
+lto = true

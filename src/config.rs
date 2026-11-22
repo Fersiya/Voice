@@ -1,23 +1,19 @@
-use anyhow::{Context, Result};
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
-    #[serde(default)]
     pub monitor: usize,
     pub region: Region,
-    #[serde(default = "default_interval")]
     pub interval_ms: u64,
-    #[serde(default = "default_lang")]
     pub ocr_lang: String,
-    pub piper: Piper,
-    #[serde(default)]
-    pub voices: HashMap<String, u32>,
+    pub speech: Speech,
+    /// Голос по имени говорящего («Имя: текст» в субтитрах).
+    pub rules: Vec<Rule>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Region {
     pub x: u32,
     pub y: u32,
@@ -25,30 +21,79 @@ pub struct Region {
     pub h: u32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Piper {
-    pub exe: String,
-    pub model: String,
-    #[serde(default = "default_length_scale")]
-    pub length_scale: f32,
-    #[serde(default)]
-    pub default_speaker: u32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    /// Голоса Windows: работает сразу, ничего скачивать не нужно.
+    Windows,
+    /// Piper: нейросетевые голоса, нужны piper.exe и модель.
+    Piper,
 }
 
-fn default_interval() -> u64 {
-    250
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Speech {
+    pub engine: Engine,
+    /// 1.0 — обычная скорость.
+    pub speed: f32,
+    /// Windows: имя голоса. Piper: номер спикера. Пусто — по умолчанию.
+    pub default_voice: String,
+    pub piper_exe: String,
+    pub piper_model: String,
 }
-fn default_lang() -> String {
-    "ru".into()
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rule {
+    pub name: String,
+    pub voice: String,
 }
-fn default_length_scale() -> f32 {
-    1.0
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            monitor: 0,
+            region: Region { x: 560, y: 930, w: 800, h: 90 },
+            interval_ms: 250,
+            ocr_lang: "ru".into(),
+            speech: Speech::default(),
+            rules: Vec::new(),
+        }
+    }
+}
+
+impl Default for Speech {
+    fn default() -> Self {
+        Self {
+            engine: Engine::Windows,
+            speed: 1.0,
+            default_voice: String::new(),
+            piper_exe: "piper/piper.exe".into(),
+            piper_model: "piper/ru_RU-denis-medium.onnx".into(),
+        }
+    }
 }
 
 impl Config {
-    pub fn load(path: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("не удалось прочитать {}", path.display()))?;
-        toml::from_str(&text).context("ошибка в config.toml")
+    /// config.toml лежит рядом с exe.
+    pub fn path() -> PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("config.toml")))
+            .unwrap_or_else(|| PathBuf::from("config.toml"))
+    }
+
+    pub fn load() -> Self {
+        std::fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|t| toml::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn to_toml(&self) -> String {
+        toml::to_string_pretty(self).unwrap_or_default()
+    }
+
+    pub fn save_text(text: &str) {
+        let _ = std::fs::write(Self::path(), text);
     }
 }

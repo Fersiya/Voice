@@ -58,14 +58,14 @@ impl App {
         }
     }
 
-    fn start_picker(&mut self, ctx: &egui::Context, monitor: usize) {
+    fn start_picker(&mut self, ctx: &egui::Context, monitor: usize, window: String) {
         let (tx, rx) = mpsc::channel();
         self.pick_rx = Some(rx);
         self.picker = Picker::Waiting { until: Instant::now() + Duration::from_secs(4) };
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(4));
-            let res = Capturer::new(monitor)
+            let res = Capturer::new(monitor, &window)
                 .and_then(|c| c.grab())
                 .map_err(|e| format!("{e:#}"));
             let _ = tx.send(res);
@@ -340,7 +340,13 @@ impl App {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     // ----- Область -----
                     card(ui, "Область субтитров", |ui| {
-                        if sh.monitors > 1 {
+                        ui.label(RichText::new("Окно для захвата (часть названия)").size(12.0).color(MUTED));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut sh.cfg.capture_window)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("chiaki — или пусто, чтобы снимать весь монитор"),
+                        );
+                        if sh.monitors > 1 && sh.cfg.capture_window.trim().is_empty() {
                             egui::ComboBox::from_id_salt("monitor")
                                 .selected_text(format!("Монитор {}", sh.cfg.monitor + 1))
                                 .show_ui(ui, |ui| {
@@ -380,8 +386,8 @@ impl App {
                         };
                         let busy = !matches!(self.picker, Picker::Idle);
                         if ui.add_enabled(!busy, egui::Button::new(label).min_size(Vec2::new(ui.available_width(), 32.0))).clicked() {
-                            let m = sh.cfg.monitor;
-                            self.start_picker(ctx, m);
+                            let (m, w) = (sh.cfg.monitor, sh.cfg.capture_window.clone());
+                            self.start_picker(ctx, m, w);
                         }
                         ui.label(RichText::new("Нажми, переключись в игру с видимыми субтитрами — через 4 с экран снимется.").size(12.0).color(MUTED));
 

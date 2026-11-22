@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 /// Поток распознавания: всегда обновляет превью области, а когда включён «Старт» —
 /// читает субтитры и отправляет новые строки на озвучку.
 pub fn run(shared: Arc<Mutex<Shared>>, tx: Sender<Utterance>, ctx: eframe::egui::Context) {
-    let mut capturer: Option<(usize, Capturer)> = None;
+    let mut capturer: Option<((usize, String), Capturer)> = None;
     let mut ocr: Option<(String, Ocr)> = None;
 
     let mut candidate = String::new();
@@ -24,9 +24,10 @@ pub fn run(shared: Arc<Mutex<Shared>>, tx: Sender<Utterance>, ctx: eframe::egui:
         std::thread::sleep(Duration::from_millis(cfg.interval_ms.clamp(100, 2000)));
 
         // Захват экрана (пересоздаём, если сменился монитор).
-        if capturer.as_ref().map(|(i, _)| *i) != Some(cfg.monitor) {
-            match Capturer::new(cfg.monitor) {
-                Ok(c) => capturer = Some((cfg.monitor, c)),
+        let key = (cfg.monitor, cfg.capture_window.clone());
+        if capturer.as_ref().map(|(k, _)| k) != Some(&key) {
+            match Capturer::new(cfg.monitor, &cfg.capture_window) {
+                Ok(c) => capturer = Some((key, c)),
                 Err(e) => {
                     set_error(&shared, format!("{e:#}"));
                     std::thread::sleep(Duration::from_secs(1));

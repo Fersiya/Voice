@@ -5,6 +5,8 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct Config {
     pub monitor: usize,
+    /// Часть названия окна для захвата (например, "chiaki"). Пусто — захват всего монитора.
+    pub capture_window: String,
     pub region: Region,
     pub interval_ms: u64,
     pub ocr_lang: String,
@@ -59,6 +61,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             monitor: 0,
+            capture_window: "chiaki".into(),
             region: Region { x: 560, y: 930, w: 800, h: 90 },
             interval_ms: 250,
             ocr_lang: "ru".into(),

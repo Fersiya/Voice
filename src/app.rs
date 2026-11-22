@@ -425,6 +425,7 @@ impl App {
                             let _ = self.tx.send(Utterance {
                                 text: "Привет! Так будут звучать субтитры из игры.".into(),
                                 voice: String::new(),
+                                pitch: 1.0,
                             });
                         }
                     });
@@ -433,7 +434,7 @@ impl App {
 
                     // ----- Говорящие -----
                     card(ui, "Голоса героев", |ui| {
-                        ui.label(RichText::new("Если субтитр выглядит как «Имя: текст», для имени можно задать свой голос.").size(12.0).color(MUTED));
+                        ui.label(RichText::new("Новые герои из субтитров «Имя: текст» появляются здесь сами с разным тоном. Голос и тон можно поправить.").size(12.0).color(MUTED));
                         let engine = sh.cfg.speech.engine;
                         let voices = sh.voices.clone();
                         let mut remove = None;
@@ -441,6 +442,7 @@ impl App {
                             ui.horizontal(|ui| {
                                 ui.add(egui::TextEdit::singleline(&mut rule.name).desired_width(90.0).hint_text("Имя"));
                                 voice_picker(ui, ("rule_voice", i), engine, &voices, &mut rule.voice);
+                                ui.add(egui::DragValue::new(&mut rule.pitch).range(0.6..=1.5).speed(0.01).fixed_decimals(2).prefix("тон "));
                                 if ui.small_button("×").clicked() {
                                     remove = Some(i);
                                 }
@@ -450,7 +452,7 @@ impl App {
                             sh.cfg.rules.remove(i);
                         }
                         if ui.button("+ Добавить героя").clicked() {
-                            sh.cfg.rules.push(Rule { name: String::new(), voice: String::new() });
+                            sh.cfg.rules.push(Rule { name: String::new(), voice: String::new(), pitch: 1.0 });
                         }
                     });
                 });

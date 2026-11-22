@@ -46,6 +46,13 @@ pub struct Speech {
 pub struct Rule {
     pub name: String,
     pub voice: String,
+    /// Тон голоса: 1.0 — обычный, меньше — ниже, больше — выше.
+    #[serde(default = "one")]
+    pub pitch: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 impl Default for Config {

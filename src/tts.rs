@@ -6,6 +6,8 @@ pub struct Utterance {
     pub text: String,
     /// Windows: имя голоса. Piper: номер спикера. Пусто — по умолчанию.
     pub voice: String,
+    /// Тон: 1.0 — обычный.
+    pub pitch: f32,
 }
 
 /// Поток озвучки. Новая реплика прерывает текущую, накопившиеся пропускаются.
@@ -85,6 +87,10 @@ mod imp {
         };
         let _ = t.set_rate(rate);
 
+        let p = u.pitch.clamp(0.5, 2.0);
+        let (pmin, pnorm, pmax) = (t.min_pitch(), t.normal_pitch(), t.max_pitch());
+        let _ = t.set_pitch((pnorm * p).clamp(pmin, pmax));
+
         t.speak(&u.text, true).map_err(|e| anyhow!("{e}"))?;
         Ok(())
     }
@@ -104,7 +110,10 @@ mod imp {
             .trim()
             .parse()
             .unwrap_or(0);
-        let length_scale = 1.0 / speech.speed.clamp(0.5, 2.0);
+        // Тон меняем скоростью воспроизведения (она двигает и тон, и темп),
+        // темп возвращаем обратно через length_scale.
+        let pitch = u.pitch.clamp(0.7, 1.4);
+        let length_scale = pitch / speech.speed.clamp(0.5, 2.0);
 
         let mut child = Command::new(&speech.piper_exe)
             .args(["--model", &speech.piper_model])
@@ -132,6 +141,7 @@ mod imp {
         }
         let handle = &out.as_ref().unwrap().1;
         let s = Sink::try_new(handle)?;
+        s.set_speed(pitch);
         s.append(Decoder::new(BufReader::new(File::open(wav)?))?);
         *sink = Some(s);
         Ok(())

@@ -105,14 +105,10 @@ pub fn run(shared: Arc<Mutex<Shared>>, tx: Sender<Utterance>, ctx: eframe::egui:
         last_spoken = text.clone();
 
         let (speaker, line) = split_speaker(&text);
-        let voice = speaker
-            .and_then(|n| {
-                cfg.rules
-                    .iter()
-                    .find(|r| r.name.trim().to_lowercase() == n.to_lowercase())
-                    .map(|r| r.voice.clone())
-            })
-            .unwrap_or_default();
+        let (voice, pitch) = match speaker {
+            Some(n) => voice_for(&shared, n),
+            None => (String::new(), 1.0),
+        };
 
         {
             let mut s = shared.lock().unwrap();
@@ -125,7 +121,7 @@ pub fn run(shared: Arc<Mutex<Shared>>, tx: Sender<Utterance>, ctx: eframe::egui:
                 s.history.remove(0);
             }
         }
-        let _ = tx.send(Utterance { text: line.to_string(), voice });
+        let _ = tx.send(Utterance { text: line.to_string(), voice, pitch });
         ctx.request_repaint();
     }
 }
@@ -162,4 +158,27 @@ fn split_speaker(text: &str) -> (Option<&str>, &str) {
         }
     }
     (None, text)
+}
+
+/// Тоны для новых героев: чередуем ниже/выше, чтобы голоса отличались.
+const PITCHES: [f32; 8] = [1.0, 0.82, 1.18, 0.9, 1.3, 0.75, 1.08, 1.22];
+
+/// Находит правило героя по имени или создаёт новое с отдельным тоном
+/// (и другим голосом Windows, если их несколько).
+fn voice_for(shared: &Arc<Mutex<Shared>>, name: &str) -> (String, f32) {
+    let mut s = shared.lock().unwrap();
+    let key = name.trim().to_lowercase();
+    if let Some(r) = s.cfg.rules.iter().find(|r| r.name.trim().to_lowercase() == key) {
+        return (r.voice.clone(), r.pitch);
+    }
+
+    let idx = s.cfg.rules.len();
+    let pitch = PITCHES[idx % PITCHES.len()];
+    let voice = if s.cfg.speech.engine == crate::config::Engine::Windows && s.voices.len() > 1 {
+        s.voices[idx % s.voices.len()].clone()
+    } else {
+        String::new()
+    };
+    s.cfg.rules.push(crate::config::Rule { name: name.trim().to_string(), voice: voice.clone(), pitch });
+    (voice, pitch)
 }

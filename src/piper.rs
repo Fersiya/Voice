@@ -117,3 +117,20 @@ fn save(url: &str, dest: &Path) -> Result<()> {
     std::fs::rename(&tmp, dest)?;
     Ok(())
 }
+
+/// Частота дискретизации модели из .onnx.json (у medium-голосов 22050).
+pub fn sample_rate(stem: &str) -> u32 {
+    std::fs::read_to_string(dir().join(format!("{stem}.onnx.json")))
+        .ok()
+        .and_then(|t| {
+            let i = t.find("\"sample_rate\"")?;
+            let rest = &t[i + 13..];
+            let digits: String = rest
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            digits.parse().ok()
+        })
+        .unwrap_or(22050)
+}

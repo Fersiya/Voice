@@ -21,9 +21,9 @@ mod imp {
     use crate::config::{Engine, Speech};
     use crate::state::Shared;
     use anyhow::{anyhow, Context, Result};
-    use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
-    use std::fs::File;
-    use std::io::{BufReader, Write};
+    use rodio::buffer::SamplesBuffer;
+    use rodio::{OutputStream, OutputStreamHandle, Sink};
+    use std::io::Write;
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::mpsc::Receiver;
@@ -49,7 +49,6 @@ mod imp {
 
         let mut out: Option<(OutputStream, OutputStreamHandle)> = None;
         let mut sink: Option<Sink> = None;
-        let wav = std::env::temp_dir().join("voice_tts.wav");
 
         while let Ok(mut u) = rx.recv() {
             while let Ok(newer) = rx.try_recv() {
@@ -59,7 +58,7 @@ mod imp {
 
             let res = match speech.engine {
                 Engine::Windows => speak_windows(&mut sys, &speech, &u),
-                Engine::Piper => speak_piper(&mut out, &mut sink, &speech, &u, &wav),
+                Engine::Piper => speak_piper(&mut out, &mut sink, &speech, &u),
             };
             if let Err(e) = res {
                 shared.lock().unwrap().error = Some(format!("Озвучка: {e:#}"));
@@ -101,7 +100,6 @@ mod imp {
         sink: &mut Option<Sink>,
         speech: &Speech,
         u: &Utterance,
-        wav: &std::path::Path,
     ) -> Result<()> {
         if let Some(s) = sink.take() {
             s.stop();
@@ -126,28 +124,41 @@ mod imp {
         let pitch = u.pitch.clamp(0.7, 1.4);
         let length_scale = pitch / speech.speed.clamp(0.5, 2.0);
 
+        // Пути отдаём относительными (рабочая папка — piper/): Piper на Windows
+        // спотыкается о кириллицу в путях, например в имени пользователя.
+        // Звук получаем сырым потоком из stdout, без временных файлов.
         let mut child = Command::new(crate::piper::exe())
             .current_dir(crate::piper::dir())
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: без мигающей консоли
             .arg("--model")
-            .arg(crate::piper::model_path(&stem))
+            .arg(format!("{stem}.onnx"))
+            .args(["--espeak_data", "espeak-ng-data"])
             .args(["--length_scale", &length_scale.to_string()])
-            .arg("--output_file")
-            .arg(wav)
+            .arg("--output_raw")
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .context("не удалось запустить piper.exe")?;
+        let mut text = u.text.trim().to_string();
+        text.push('\n');
         child
             .stdin
             .take()
             .ok_or_else(|| anyhow!("нет stdin у piper"))?
-            .write_all(u.text.as_bytes())?;
-        let status = child.wait()?;
-        if !status.success() {
-            return Err(anyhow!("piper завершился с ошибкой ({status})"));
+            .write_all(text.as_bytes())?;
+        let output = child.wait_with_output()?;
+        if !output.status.success() || output.stdout.len() < 2 {
+            let err = String::from_utf8_lossy(&output.stderr);
+            let tail: String = err.chars().rev().take(300).collect::<Vec<_>>().into_iter().rev().collect();
+            return Err(anyhow!("piper ({}), модель {stem}: {}", output.status, tail.trim()));
         }
+
+        let samples: Vec<i16> = output
+            .stdout
+            .chunks_exact(2)
+            .map(|b| i16::from_le_bytes([b[0], b[1]]))
+            .collect();
 
         if out.is_none() {
             *out = Some(OutputStream::try_default().context("нет устройства вывода звука")?);
@@ -155,7 +166,7 @@ mod imp {
         let handle = &out.as_ref().unwrap().1;
         let s = Sink::try_new(handle)?;
         s.set_speed(pitch);
-        s.append(Decoder::new(BufReader::new(File::open(wav)?))?);
+        s.append(SamplesBuffer::new(1, crate::piper::sample_rate(&stem), samples));
         *sink = Some(s);
         Ok(())
     }

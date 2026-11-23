@@ -412,17 +412,31 @@ impl App {
                         });
 
                         let engine = sh.cfg.speech.engine;
-                        let voices = sh.voices.clone();
+                        let voices = match engine {
+                            Engine::Windows => sh.voices.clone(),
+                            Engine::Piper => sh.piper_models.clone(),
+                        };
                         ui.horizontal(|ui| {
                             ui.label("Основной");
                             voice_picker(ui, "default_voice", engine, &voices, &mut sh.cfg.speech.default_voice);
                         });
 
                         if engine == Engine::Piper {
-                            ui.label(RichText::new("piper.exe").size(12.0).color(MUTED));
-                            ui.add(egui::TextEdit::singleline(&mut sh.cfg.speech.piper_exe).desired_width(f32::INFINITY));
-                            ui.label(RichText::new("модель (.onnx)").size(12.0).color(MUTED));
-                            ui.add(egui::TextEdit::singleline(&mut sh.cfg.speech.piper_model).desired_width(f32::INFINITY));
+                            if let Some(text) = sh.download_status.clone() {
+                                ui.label(RichText::new(text).size(12.0).color(OK));
+                            }
+                            let label = if sh.piper_models.is_empty() {
+                                "Скачать Piper и русские голоса (~150 МБ)"
+                            } else {
+                                "Докачать недостающие голоса"
+                            };
+                            if sh.piper_models.is_empty() {
+                                ui.label(RichText::new("Голоса Piper звучат намного естественнее, чем голоса Windows. Скачай их одной кнопкой.").size(12.0).color(MUTED));
+                            }
+                            if ui.add_enabled(!sh.downloading, egui::Button::new(label)).clicked() {
+                                let arc = self.shared.clone();
+                                crate::piper::start_install(sh, arc, ctx.clone());
+                            }
                         } else if voices.is_empty() {
                             ui.label(RichText::new("Голоса Windows не найдены. Добавь русский голос: Параметры → Специальные возможности → Диктор.").size(12.0).color(WARN));
                         }
@@ -442,7 +456,10 @@ impl App {
                     card(ui, "Голоса героев", |ui| {
                         ui.label(RichText::new("Новые герои из субтитров «Имя: текст» появляются здесь сами с разным тоном. Голос и тон можно поправить.").size(12.0).color(MUTED));
                         let engine = sh.cfg.speech.engine;
-                        let voices = sh.voices.clone();
+                        let voices = match engine {
+                            Engine::Windows => sh.voices.clone(),
+                            Engine::Piper => sh.piper_models.clone(),
+                        };
                         let mut remove = None;
                         for (i, rule) in sh.cfg.rules.iter_mut().enumerate() {
                             ui.horizontal(|ui| {
@@ -467,20 +484,17 @@ impl App {
 }
 
 fn voice_picker(ui: &mut egui::Ui, id: impl std::hash::Hash, engine: Engine, voices: &[String], value: &mut String) {
-    match engine {
-        Engine::Windows => {
-            let shown = if value.is_empty() { "по умолчанию".to_string() } else { value.clone() };
-            egui::ComboBox::from_id_salt(id).width(150.0).selected_text(shown).show_ui(ui, |ui| {
-                ui.selectable_value(value, String::new(), "по умолчанию");
-                for v in voices {
-                    ui.selectable_value(value, v.clone(), v);
-                }
-            });
+    let name = |v: &str| match engine {
+        Engine::Piper => crate::piper::short_name(v),
+        Engine::Windows => v.to_string(),
+    };
+    let shown = if value.is_empty() { "по умолчанию".to_string() } else { name(value) };
+    egui::ComboBox::from_id_salt(id).width(150.0).selected_text(shown).show_ui(ui, |ui| {
+        ui.selectable_value(value, String::new(), "по умолчанию");
+        for v in voices {
+            ui.selectable_value(value, v.clone(), name(v));
         }
-        Engine::Piper => {
-            ui.add(egui::TextEdit::singleline(value).desired_width(60.0).hint_text("спикер №"));
-        }
-    }
+    });
 }
 
 fn status(sh: &Shared) -> (&'static str, Color32) {

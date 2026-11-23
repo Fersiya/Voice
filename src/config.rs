@@ -38,10 +38,8 @@ pub struct Speech {
     pub engine: Engine,
     /// 1.0 — обычная скорость.
     pub speed: f32,
-    /// Windows: имя голоса. Piper: номер спикера. Пусто — по умолчанию.
+    /// Windows: имя голоса. Piper: имя модели. Пусто — по умолчанию.
     pub default_voice: String,
-    pub piper_exe: String,
-    pub piper_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,19 +75,21 @@ impl Default for Speech {
             engine: Engine::Windows,
             speed: 1.0,
             default_voice: String::new(),
-            piper_exe: "piper/piper.exe".into(),
-            piper_model: "piper/ru_RU-denis-medium.onnx".into(),
         }
     }
 }
 
 impl Config {
-    /// config.toml лежит рядом с exe.
-    pub fn path() -> PathBuf {
+    /// Папка с exe: рядом лежат config.toml и piper/.
+    pub fn base_dir() -> PathBuf {
         std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|d| d.join("config.toml")))
-            .unwrap_or_else(|| PathBuf::from("config.toml"))
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    pub fn path() -> PathBuf {
+        Self::base_dir().join("config.toml")
     }
 
     pub fn load() -> Self {

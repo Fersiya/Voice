@@ -24,6 +24,7 @@ mod imp {
     use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
     use std::fs::File;
     use std::io::{BufReader, Write};
+    use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::mpsc::Receiver;
     use std::sync::{Arc, Mutex};
@@ -106,26 +107,38 @@ mod imp {
             s.stop();
         }
 
-        let speaker: u32 = if u.voice.is_empty() { &speech.default_voice } else { &u.voice }
-            .trim()
-            .parse()
-            .unwrap_or(0);
+        // Модель героя → основная → первая установленная.
+        let installed = crate::piper::scan();
+        let wanted = if u.voice.is_empty() { &speech.default_voice } else { &u.voice };
+        let stem = if installed.contains(wanted) {
+            wanted.clone()
+        } else {
+            installed
+                .first()
+                .cloned()
+                .ok_or_else(|| anyhow!("голоса Piper не установлены: нажми «Скачать Piper и голоса»"))?
+        };
+        if !crate::piper::exe().exists() {
+            return Err(anyhow!("piper.exe не найден: нажми «Скачать Piper и голоса»"));
+        }
         // Тон меняем скоростью воспроизведения (она двигает и тон, и темп),
         // темп возвращаем обратно через length_scale.
         let pitch = u.pitch.clamp(0.7, 1.4);
         let length_scale = pitch / speech.speed.clamp(0.5, 2.0);
 
-        let mut child = Command::new(&speech.piper_exe)
-            .args(["--model", &speech.piper_model])
+        let mut child = Command::new(crate::piper::exe())
+            .current_dir(crate::piper::dir())
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: без мигающей консоли
+            .arg("--model")
+            .arg(crate::piper::model_path(&stem))
             .args(["--length_scale", &length_scale.to_string()])
-            .args(["--speaker", &speaker.to_string()])
             .arg("--output_file")
             .arg(wav)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .with_context(|| format!("не удалось запустить {}", speech.piper_exe))?;
+            .context("не удалось запустить piper.exe")?;
         child
             .stdin
             .take()

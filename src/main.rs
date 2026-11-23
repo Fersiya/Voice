@@ -4,6 +4,7 @@ mod app;
 mod capture;
 mod config;
 mod ocr;
+mod piper;
 mod state;
 mod tts;
 mod worker;
@@ -14,6 +15,7 @@ fn main() -> eframe::Result<()> {
     let cfg = config::Config::load();
     let mut shared = state::Shared::new(cfg);
     shared.monitors = capture::monitor_count();
+    shared.piper_models = piper::scan();
     let shared = Arc::new(Mutex::new(shared));
 
     let options = eframe::NativeOptions {

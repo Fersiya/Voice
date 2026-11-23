@@ -17,6 +17,9 @@ pub struct Shared {
     pub preview_gen: u64,
     pub history: Vec<Entry>,
     pub voices: Vec<String>,
+    pub piper_models: Vec<String>,
+    pub downloading: bool,
+    pub download_status: Option<String>,
     pub monitors: usize,
     pub last_seen: Option<Instant>,
 }
@@ -31,6 +34,9 @@ impl Shared {
             preview_gen: 0,
             history: Vec::new(),
             voices: Vec::new(),
+            piper_models: Vec::new(),
+            downloading: false,
+            download_status: None,
             monitors: 1,
             last_seen: None,
         }

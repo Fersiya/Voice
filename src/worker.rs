@@ -175,11 +175,11 @@ fn voice_for(shared: &Arc<Mutex<Shared>>, name: &str) -> (String, f32) {
 
     let idx = s.cfg.rules.len();
     let pitch = PITCHES[idx % PITCHES.len()];
-    let voice = if s.cfg.speech.engine == crate::config::Engine::Windows && s.voices.len() > 1 {
-        s.voices[idx % s.voices.len()].clone()
-    } else {
-        String::new()
+    let list = match s.cfg.speech.engine {
+        crate::config::Engine::Windows => &s.voices,
+        crate::config::Engine::Piper => &s.piper_models,
     };
+    let voice = if list.len() > 1 { list[idx % list.len()].clone() } else { String::new() };
     s.cfg.rules.push(crate::config::Rule { name: name.trim().to_string(), voice: voice.clone(), pitch });
     (voice, pitch)
 }

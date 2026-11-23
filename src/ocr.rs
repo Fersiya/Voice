@@ -21,10 +21,21 @@ impl Ocr {
             // Повторная инициализация вернёт S_FALSE — это нормально.
             let _ = RoInitialize(RO_INIT_MULTITHREADED);
         }
-        let language = Language::CreateLanguage(&HSTRING::from(lang))?;
-        let engine = OcrEngine::TryCreateFromLanguage(&language).map_err(|_| {
-            anyhow!("OCR для «{lang}» недоступен. Установи русский язык с распознаванием текста: Параметры → Время и язык → Язык и регион")
-        })?;
+        let try_lang = |tag: &str| -> Option<OcrEngine> {
+            let language = Language::CreateLanguage(&HSTRING::from(tag)).ok()?;
+            OcrEngine::TryCreateFromLanguage(&language).ok()
+        };
+        // «ru» → «ru-RU», затем языки профиля пользователя.
+        let engine = try_lang(lang)
+            .or_else(|| (!lang.contains('-')).then(|| try_lang(&format!("{lang}-{}", lang.to_uppercase()))).flatten())
+            .or_else(|| OcrEngine::TryCreateFromUserProfileLanguages().ok())
+            .ok_or_else(|| {
+                anyhow!(
+                    "OCR для «{lang}» недоступен: в Windows не установлен компонент распознавания текста. \
+                     Открой PowerShell от администратора и выполни: \
+                     Add-WindowsCapability -Online -Name \"Language.OCR~~~ru-RU~0.0.1.0\" — потом перезапусти Voice"
+                )
+            })?;
         Ok(Self { engine })
     }
 
